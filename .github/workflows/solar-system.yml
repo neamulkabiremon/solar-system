@@ -1,33 +1,45 @@
-name: Solar System Workflow
+name: Kaniko Build and Push
 
-on: 
+on:
   workflow_dispatch:
   push:
     branches:
       - main
       - 'feature/*'
-    
-jobs:
-    unit-testing:
-        name: Unit Testing
-        runs-on: ubuntu-latest
-        steps:
-        - name: Checkout Repository
-          uses: actions/checkout@v4
 
-        - name: Setup NodeJS Version
-          uses: actions/setup-node@v3
-          with:
-            node-version: 20
-    
-        - name: Install Dependencies
-          run: npm install
-    
-        - name: Unit Testing
-          run: npm test
-          
-        - name: Archive Test Result
-          uses: actions/upload-artifact@v3
-          with:
-            name: Mocha-Test-Result
-            path: test-results.xml
+jobs:
+  build-and-push-kaniko:
+    name: Build & Push Docker Image using Kaniko on AKS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set Image Tag
+        run: echo "IMAGE_TAG=${{ github.run_number }}" >> $GITHUB_ENV
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Get AKS Credentials
+        run: |
+          az aks get-credentials \
+            --resource-group myResourceGroup \
+            --name myAKSCluster \
+            --overwrite-existing
+
+      - name: Replace Tag in Kaniko Template
+        run: |
+          sed "s/__IMAGE_TAG__/${{ env.IMAGE_TAG }}/" kaniko-azure-acr.template.yaml > kaniko.yaml
+
+      - name: Deploy Kaniko Pod
+        run: kubectl apply -f kaniko.yaml
+
+      - name: Wait & Stream Kaniko Logs
+        run: |
+          echo "⏳ Waiting for Kaniko to initialize..."
+          sleep 20
+          echo "📄 Streaming Kaniko container logs:"
+          kubectl logs -f kaniko-azure-acr -c kaniko
