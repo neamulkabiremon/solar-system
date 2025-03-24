@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kaniko-azure-acr
+  namespace: default
+spec:
+  serviceAccountName: kaniko-sa
+  restartPolicy: Never
+  initContainers:
+    - name: clone-source
+      image: alpine/git
+      command:
+        - /bin/sh
+        - -c
+        - |
+          USERNAME=$(cat /mnt/secrets-store/AZURE-REPO-USERNAME)
+          PAT=$(cat /mnt/secrets-store/AZURE-REPO-PAT)
+          git clone https://$USERNAME:$PAT@dev.azure.com/mathijsmillenaar0748/HealTheWorld/_git/CalculateGini /workspace
+      volumeMounts:
+        - name: build-context
+          mountPath: /workspace
+        - name: secrets-store-volume
+          mountPath: /mnt/secrets-store
+          readOnly: true
+
+    - name: setup-docker-auth
+      image: alpine
+      command:
+        - /bin/sh
+        - -c
+        - |
+          mkdir -p /kaniko/.docker && \
+          echo "{\"auths\":{\"https://healtheworlds.azurecr.io\":{\"username\":\"$(cat /mnt/secrets-store/ACR-USERNAME)\",\"password\":\"$(cat /mnt/secrets-store/ACR-PASSWORD)\"}}}" > /kaniko/.docker/config.json
+      volumeMounts:
+        - name: docker-config
+          mountPath: /kaniko/.docker
+        - name: secrets-store-volume
+          mountPath: /mnt/secrets-store
+          readOnly: true
+
+  containers:
+    - name: kaniko
+      image: gcr.io/kaniko-project/executor:latest
+      args:
+        - "--dockerfile=/workspace/Dockerfile"
+        - "--context=dir:///workspace"
+        - "--destination=healtheworlds.azurecr.io/calculate-gini:__IMAGE_TAG__"
+        - "--destination=healtheworlds.azurecr.io/calculate-gini:latest"
+        - "--verbosity=debug"
+        - "--skip-tls-verify=true"
+      env:
+        - name: DOCKER_CONFIG
+          value: /kaniko/.docker
+      volumeMounts:
+        - name: build-context
+          mountPath: /workspace
+        - name: docker-config
+          mountPath: /kaniko/.docker
+
+  volumes:
+    - name: build-context
+      emptyDir: {}
+    - name: docker-config
+      emptyDir: {}
+    - name: secrets-store-volume
+      csi:
+        driver: secrets-store.csi.k8s.io
+        readOnly: true
+        volumeAttributes:
+          secretProviderClass: "azure-kv-kaniko"
