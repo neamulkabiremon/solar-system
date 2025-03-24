@@ -26,8 +26,8 @@ jobs:
       - name: Get AKS Credentials
         run: |
           az aks get-credentials \
-            --resource-group myResourceGroup \
-            --name myAKSCluster \
+            --resource-group HealTheWorld \
+            --name healtheworld \
             --overwrite-existing
 
       - name: Replace Tag in Kaniko Template
