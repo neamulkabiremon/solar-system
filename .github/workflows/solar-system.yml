@@ -41,5 +41,5 @@ jobs:
         run: |
           echo "⏳ Waiting for Kaniko to initialize..."
           sleep 20
-          echo "📄 Streaming Kaniko container logs:"
+          echo "📄 Streaming Kaniko container logs"
           kubectl logs -f kaniko-azure-acr -c kaniko
